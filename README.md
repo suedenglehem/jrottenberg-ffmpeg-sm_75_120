@@ -64,3 +64,20 @@ docker run --rm --gpus all boris271142/ffmpeg-sm_75_120 \
 | `download_tarballs.sh`, `generate-source-of-truth-ffmpeg-versions.py`, `install_ffmpeg.sh` | unmodified from upstream |
 
 Upstream: https://github.com/jrottenberg/ffmpeg (MIT-licensed parts; ffmpeg itself is LGPL/GPL with `--enable-gpl --enable-nonfree` components as in the original image).
+
+## `ffmpeg -version` output
+
+```
+ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers
+built with gcc 13 (Ubuntu 13.3.0-6ubuntu2~24.04)
+configuration: --disable-debug --disable-doc --disable-ffplay --enable-cuda --enable-cuda-nvcc --nvccflags='-gencode arch=compute_75,code=compute_75 -O2' --enable-cuvid --enable-fontconfig --enable-gpl --enable-libaom --enable-libaribb24 --enable-libass --enable-libbluray --enable-libdav1d --enable-libfdk-aac --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-libkvazaar --enable-libmp3lame --enable-libnpp --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-libopus --enable-libsrt --enable-libsvtav1 --enable-libtheora --enable-libvidstab --enable-libvmaf --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxvid --enable-libzimg --enable-libzmq --enable-nonfree --enable-nvenc --enable-openssl --enable-shared --enable-small --enable-version3 --enable-whisper --extra-cflags='-I/opt/ffmpeg/include -I/opt/ffmpeg/include/ffnvcodec -I/usr/local/cuda/include/ -I/usr/include/x86_64-linux-gnu -I/usr/include/aarch64-linux-gnu' --extra-ldflags='-L/opt/ffmpeg/lib -L/usr/local/cuda/lib64 -L/usr/local/cuda/lib32/ -L/usr/lib/x86_64-linux-gnu -L/usr/lib/aarch64-linux-gnu -L/usr/lib' --extra-ldflags=-L/opt/ffmpeg/lib/aarch64-linux-gnu --extra-ldflags=-L/opt/ffmpeg/lib/x86_64-linux-gnu --extra-libs=-ldl --extra-libs=-lm --extra-libs=-lpthread --ld=g++ --prefix=/opt/ffmpeg
+libavutil      61.  1.102 / 61.  1.102
+libavcodec     63.  1.102 / 63.  1.102
+libavformat    63.  1.102 / 63.  1.102
+libavdevice    63.  1.102 / 63.  1.102
+libavfilter    12.  1.102 / 12.  1.102
+libswscale     10.  1.102 / 10.  1.102
+libswresample   7.  1.102 /  7.  1.102
+
+Exiting with exit code 0
+```
