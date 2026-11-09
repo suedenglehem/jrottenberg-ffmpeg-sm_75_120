@@ -17,7 +17,7 @@ ENV	    DEBIAN_FRONTEND=noninteractive
 
 ENV FFMPEG_VERSION=9.0.2
 
-ENV NVIDIA_HEADERS_VERSION=11.1.5.3
+ENV NVIDIA_HEADERS_VERSION=13.1.15.0
 
 ## opencore-amr - https://sourceforge.net/projects/opencore-amr/
 ##         x264 - http://www.videolan.org/developers/x264.html

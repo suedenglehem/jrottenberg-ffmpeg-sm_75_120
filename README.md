@@ -35,6 +35,10 @@ Note: **NVENC/NVDEC/CUVID/libnpp do not use nvcc at all** (they are header-only,
 
 `ENV MAKEFLAGS="-j24"` (original: `-j4`) — sized for a 24-CPU build host.
 
+### 4. NVENC/NVDEC headers: `11.1.5.3` → `13.1.15.0`
+
+`ENV NVIDIA_HEADERS_VERSION=13.1.15.0` (original: `11.1.5.3`) — the NVENC API 13.1 headers, matching the NVENC version loaded by modern drivers (570+/610.x load "Nvenc version 13.1").
+
 ## Build
 
 ```bash
@@ -59,7 +63,7 @@ docker run --rm --gpus all boris271142/ffmpeg-sm_75_120 \
 
 | File | Role |
 |---|---|
-| `Dockerfile` | patched from `docker-images/9.0/nvidia2404/Dockerfile` (CUDA 12.8.1, `-j24`) |
+| `Dockerfile` | patched from `docker-images/9.0/nvidia2404/Dockerfile` (CUDA 12.8.1, `-j24`, headers 13.1.15.0) |
 | `build_source.sh` | patched: `--nvccflags` added to ffmpeg's `./configure` |
 | `download_tarballs.sh`, `generate-source-of-truth-ffmpeg-versions.py`, `install_ffmpeg.sh` | unmodified from upstream |
 
