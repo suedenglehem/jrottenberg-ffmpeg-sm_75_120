@@ -59,6 +59,47 @@ docker run --rm --gpus all boris271142/ffmpeg-sm_75_120 \
   -vf "hwupload_cuda,scale_cuda=w=160:h=120" -f null -
 ```
 
+## Multi-GPU hosts: how to select a GPU
+
+On a host with several GPUs, restricting a container to a single GPU with
+`--gpus '"device=N"'` can break NVENC/NVDEC on some cards: ffmpeg sees the GPU
+via CUDA, but encoding fails with
+
+```
+[h264_nvenc] OpenEncodeSessionEx failed: unsupported device (2)
+[h264_nvenc] No capable devices found
+```
+
+Observed on a 3-GPU host (2× RTX 3090 + RTX 3080 Ti): the 3080 Ti fails in a
+container started with `--gpus '"device=1"'`, while the 3090s are fine — the
+driver's NVENC unit mapping breaks when only one GPU is exposed and it becomes
+CUDA device 0. (Not a hardware defect: the same card encodes fine on the host,
+and the stock `jrottenberg/ffmpeg` image fails in the same container setup.)
+
+**Fix: expose all GPUs, then pin the target GPU inside the container by UUID.**
+
+```bash
+# 1. find the GPU UUIDs on the host:
+nvidia-smi --query-gpu=index,name,uuid --format=csv
+# 1, NVIDIA GeForce RTX 3080 Ti, GPU-4fccb0bc-ead6-3306-6d15-b1d1cb6f8f9c
+
+# 2. run with ALL GPUs exposed + CUDA_VISIBLE_DEVICES=<UUID> of the target:
+docker run --rm --gpus all \
+  -e CUDA_VISIBLE_DEVICES=GPU-4fccb0bc-ead6-3306-6d15-b1d1cb6f8f9c \
+  -v /path/to/media:/media boris271142/ffmpeg-sm_75_120 \
+  -hide_banner -y -i /media/input.mp4 \
+  -c:v hevc_nvenc -preset p5 -cq 28 -c:a copy /media/output.mp4
+```
+
+Notes:
+
+- Use the **UUID**, not an index: CUDA's enumeration order can differ from
+  `nvidia-smi`'s index order, so `CUDA_VISIBLE_DEVICES=1` may select a
+  different card than expected. The UUID is unambiguous.
+- `CUDA_VISIBLE_DEVICES` accepts a comma-separated UUID list to allow several GPUs.
+- `--gpus all` + UUID pinning also keeps NVENC working on the other GPUs, so a
+  single command form works for every card on the host.
+
 ## Files
 
 | File | Role |
