@@ -53,8 +53,8 @@ Getting that to actually work needed five things:
 
 ```bash
 docker run --rm boris271142/ffmpeg-sm_75_120 -hide_banner -filters 2>/dev/null | grep libvmaf
-# -> T.. libvmaf          ... VMAF (CPU)
-#    T.. libvmaf_cuda     ... VMAF (CUDA)
+# -> .. libvmaf           ... VMAF (CPU)
+#    .. libvmaf_cuda      ... VMAF (CUDA)
 
 docker run --rm --gpus all boris271142/ffmpeg-sm_75_120 \
   -f lavfi -i testsrc=duration=1:size=320x240:rate=30 \
