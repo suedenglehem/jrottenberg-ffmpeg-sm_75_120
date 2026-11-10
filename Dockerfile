@@ -106,7 +106,10 @@ ARG THEORA_PKGS="libtheora-dev libtheora0"
 ARG SRT_PKGS="libssl-dev libsrt-openssl-dev libsrt1.5-openssl"
 ARG LIBDRM_PKGS="libbsd0 libdrm-dev libdrm2 libxcb1-dev libxcb1"
 
-ENV MAKEFLAGS="-j24"
+# 2026-11-10: -j30 per andrei (32-CPU host, keep 2 free for the running
+# fass containers); the buildx --resource cpu-quota=3000000 flag is the
+# hard cap that also bounds ninja/cmake -j$(nproc).
+ENV MAKEFLAGS="-j30"
 ENV PKG_CONFIG_PATH="/opt/ffmpeg/share/pkgconfig:/opt/ffmpeg/lib/pkgconfig:/opt/ffmpeg/lib64/pkgconfig:/opt/ffmpeg/lib/x86_64-linux-gnu/pkgconfig:/opt/ffmpeg/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig"
 
 ENV PREFIX="/opt/ffmpeg"
@@ -177,15 +180,23 @@ RUN \
 ## https://github.com/Netflix/vmaf/issues/788#issuecomment-756098059
 RUN \
         echo "Adding g++ for VMAF build" && \
-        apt-get install -yq g++
+        # xxd: the CUDA build of libvmaf embeds the nvcc-generated PTX into
+        # C headers via 'xxd -i'. On ubuntu 24.04 xxd is a standalone
+        # package — neither 'vim' nor 'vim-common' (installed above with
+        # --no-install-recommends) provides it, and meson hard-fails
+        # without it.
+        apt-get install -yq g++ xxd
 
 # Note: pass '--library-list lib1,lib2,lib3 for more control.
-#       Here we have 3 libs that we have to build from source
-RUN /tmp/workdir/generate-source-of-truth-ffmpeg-versions.py --library-list kvazaar,libvmaf,whisper
+#       nvidia-codec-headers runs FIRST: the CUDA build of libvmaf below
+#       includes <ffnvcodec/dynlink_loader.h>, which this pass installs
+#       into ${PREFIX}/include.
+RUN /tmp/workdir/generate-source-of-truth-ffmpeg-versions.py --library-list nvidia-codec-headers
 RUN /tmp/workdir/download_tarballs.sh
 RUN /tmp/workdir/build_source.sh
 
-RUN /tmp/workdir/generate-source-of-truth-ffmpeg-versions.py --library-list nvidia-codec-headers
+#       Here we have 3 libs that we have to build from source
+RUN /tmp/workdir/generate-source-of-truth-ffmpeg-versions.py --library-list kvazaar,libvmaf,whisper
 RUN /tmp/workdir/download_tarballs.sh
 RUN /tmp/workdir/build_source.sh
 
@@ -195,7 +206,18 @@ RUN /tmp/workdir/build_source.sh
 
 ## when  debugging you can pass in || true to the end of the command
 ## to keep the build going even if one of the steps fails
-RUN /tmp/workdir/install_ffmpeg.sh
+##
+## The ffmpeg built above links libcuda.so.1 (--enable-cuda, needed by the
+## CUDA libvmaf path). The builder has no host driver; the CUDA image ships
+## a compat driver at /usr/local/cuda/compat, so the install script's
+## post-install smoke test ('ffmpeg -buildconf', which never calls cuInit)
+## resolves it from there. The compat path matches neither of the script's
+## library-copy filters (x86_64-linux-gnu / opt/ffmpeg), so the driver is
+## NOT bundled into the image — at runtime the nvidia container toolkit
+## mounts the host driver.
+RUN sed -i 's|^    LD_LIBRARY_PATH=/usr/local/lib ffmpeg -buildconf|    LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda/compat ffmpeg -buildconf|' /tmp/workdir/install_ffmpeg.sh \
+    && grep -q 'cuda/compat ffmpeg -buildconf' /tmp/workdir/install_ffmpeg.sh \
+    && /tmp/workdir/install_ffmpeg.sh
 
 
 
@@ -218,6 +240,20 @@ COPY --from=builder /usr/local/include /usr/local/include/
 COPY --from=builder /usr/share/fonts /usr/share/fonts
 COPY --from=builder /usr/share/fontconfig /usr/share/fontconfig
 COPY --from=builder /usr/bin/fc-* /usr/bin/
+
+# The ffmpeg in /usr/local/bin hard-links libcuda.so.1 (--enable-cuda, needed
+# by the CUDA libvmaf path). Containers WITHOUT a GPU (e.g. fass-worker) get
+# no nvidia-runtime driver mount, so the binary itself would fail to launch.
+# Bundle the CUDA compat driver at the EXACT path the nvidia container
+# runtime bind-mounts the host driver to: with a GPU the mount shadows this
+# copy and the real host driver is used; without one, the compat library
+# satisfies the dynamic linker — the non-CUDA paths never call cuInit, and
+# any actual CUDA call fails cleanly instead of shadowing the host driver.
+COPY --from=builder /usr/local/cuda-12.8/compat/ /tmp/nvcompat/
+RUN cp /tmp/nvcompat/libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so.1 \
+    && ln -sf libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so \
+    && ldconfig \
+    && rm -rf /tmp/nvcompat
 
 ENV	    NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
 ENV	    DEBIAN_FRONTEND=nonintercative

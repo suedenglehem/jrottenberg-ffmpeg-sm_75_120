@@ -31,13 +31,37 @@ So multi-SASS `--nvccflags` cannot work with ffmpeg as designed. PTX is **forwar
 
 Note: **NVENC/NVDEC/CUVID/libnpp do not use nvcc at all** (they are header-only, `ffnvcodec`), so hardware encode/decode works on all supported GPUs regardless of these flags. The nvccflags only affect the CUDA *filters*.
 
-### 3. Build parallelism: `-j4` → `-j24`
+### 3. Build parallelism: `-j4` → `-j30`
 
-`ENV MAKEFLAGS="-j24"` (original: `-j4`) — sized for a 24-CPU build host.
+`ENV MAKEFLAGS="-j30"` (original: `-j4`) — sized for the 32-CPU build host (2 kept free for co-tenant containers). The build is additionally capped by `docker buildx build --resource cpu-quota=3000000`, which also bounds `ninja`/`cmake -j$(nproc)`.
 
 ### 4. NVENC/NVDEC headers: `11.1.5.3` → `13.1.15.0`
 
 `ENV NVIDIA_HEADERS_VERSION=13.1.15.0` (original: `11.1.5.3`) — the NVENC API 13.1 headers, matching the NVENC version loaded by modern drivers (570+/610.x load "Nvenc version 13.1").
+
+### 5. libvmaf is built with CUDA — `libvmaf_cuda` (GPU VMAF scoring)
+
+Stock `jrottenberg/ffmpeg` builds libvmaf **CPU-only** (`meson setup -Denable_tests=false … --default-library=static`). This build compiles libvmaf v3.0.0 with `-Denable_cuda=true -Dcuda_architectures="75;86;90-virtual"`, which switches on ffmpeg's **`libvmaf_cuda`** filter — VMAF scoring with the whole pipeline (decode, scaling, the VMAF computation) on the GPU.
+
+Getting that to actually work needed five things:
+
+1. **Build order.** The `nvidia-codec-headers` source pass now runs **before** the `kvazaar,libvmaf,whisper` pass: the CUDA libvmaf includes `<ffnvcodec/dynlink_loader.h>`, which that pass installs into `${PREFIX}/include`.
+2. **`xxd` in the builder.** The CUDA libvmaf embeds the nvcc-generated kernel PTX into C headers via `xxd -i`; on ubuntu 24.04 `xxd` is a standalone package (neither `vim` nor `vim-common` provides it) and meson hard-fails without it.
+3. **The CUDA-arch fix (the one that matters).** libvmaf v3.0.0's meson builds each CUDA kernel with a `nvcc --ptx` *custom_target that carries no arch flag*, so the embedded PTX defaults to nvcc 12.8's **`.target sm_52`**. Modern drivers (CUDA 13.x generation) have dropped JIT for pre-sm_75 PTX → `cuModuleLoadData` fails with `CUDA_ERROR_INVALID_PTX` (218) → `assert(0)` in `init_fex_cuda` (`integer_adm_cuda.c:1026`) the first time `libvmaf_cuda` is used — the filter looks present but is a landmine. The meson `cuda_architectures` option does **not** reach this custom target, so the build `sed`s the kernel target from `--ptx` to a **fatbin** — `compute_75` PTX (JIT-able on sm_75…sm_120, the image's range) + native `sm_86` SASS for the fleet's Ampere cards — and `cuModuleLoadData` picks the best image per device. A post-build check verifies every kernel module is a fatbin (classic `7db15fba` or 64-bit `50ed55ba` magic) and **hard-fails the build otherwise**.
+4. **`--enable-cuda` runtime dependency.** ffmpeg links `libcuda.so.1`. Containers **without** a GPU (e.g. fass's `fass-worker` sidecar) get no nvidia-runtime driver mount, so the binary itself would fail to launch — the image therefore bundles the CUDA 12.8 **compat driver** at exactly `/usr/lib/x86_64-linux-gnu/libcuda.so.1`, the path the nvidia container runtime bind-mounts the host driver to: with a GPU the mount **shadows** the compat copy (real host driver wins); without one, the compat library satisfies the dynamic linker (non-CUDA paths never call `cuInit`; any real CUDA call fails cleanly). The builder's own post-install smoke test runs with `LD_LIBRARY_PATH=/usr/local/cuda/compat` for the same reason.
+5. **Verify.**
+
+```bash
+docker run --rm boris271142/ffmpeg-sm_75_120 -hide_banner -filters 2>/dev/null | grep libvmaf
+# -> T.. libvmaf          ... VMAF (CPU)
+#    T.. libvmaf_cuda     ... VMAF (CUDA)
+
+docker run --rm --gpus all boris271142/ffmpeg-sm_75_120 \
+  -f lavfi -i testsrc=duration=1:size=320x240:rate=30 \
+  -f lavfi -i testsrc2=duration=1:size=320x240:rate=30 \
+  -filter_complex "[0:v]hwupload_cuda[dd];[1:v]hwupload_cuda[rd];[dd][rd]libvmaf_cuda=model=version=vmaf_v0.6.1" \
+  -f null -
+```
 
 ## Build
 

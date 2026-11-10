@@ -299,11 +299,46 @@ build_libsrt() {
 
 build_libvmaf() {
     # https://github.com/Netflix/vmaf/issues/788#issuecomment-756098059
+    # CUDA: the nvidia-codec-headers pass runs earlier and installs the
+    # ffnvcodec headers (dynlink_loader.h) into ${PREFIX}/include; nvcc and
+    # nvtx3 come from the nvidia/cuda devel base image. -Denable_cuda=true
+    # builds the libvmaf_cuda objects, which switches the libvmaf_cuda
+    # filter on in ffmpeg (GPU VMAF scoring).
+    export CPATH="${PREFIX}/include:/usr/local/cuda/include"
     mkdir ./libvmaf/build
     cd ./libvmaf/build
-    meson setup -Denable_tests=false -Denable_docs=false --buildtype=release --default-library=static --prefix "${PREFIX}" .. && \
+    # CUDA arch fix (2026-11-10): libvmaf v3.0.0's meson builds each CUDA
+    # kernel with a `nvcc --ptx` custom_target that carries NO arch flag, so
+    # the embedded PTX defaults to nvcc 12.8's `.target sm_52`. CUDA 13.x
+    # drivers dropped JIT for pre-sm_75 PTX → cuModuleLoadData fails with
+    # CUDA_ERROR_INVALID_PTX (218) → assert(0) in init_fex_cuda
+    # (integer_adm_cuda.c:1026) on first use of libvmaf_cuda. The meson
+    # `cuda_architectures` option only applies to the regular .cu objects,
+    # not to this custom target — hence the sed. Replace `--ptx` with a
+    # fatbin: sm_75 PTX (JIT-able on sm_75..sm_120, the image tag range) +
+    # native sm_86 SASS for the fleet's Ampere cards. cuModuleLoadData loads
+    # fatbins and picks the best image per device. Guarded so a re-run never
+    # double-patches; hard-fails below if the fix did not take.
+    grep -q "'-fatbin', '-gencode'" ../src/meson.build || \
+        sed -i "s/nvcc_exe, '--ptx', '@INPUT@'/nvcc_exe, '-fatbin', '-gencode', 'arch=compute_75,code=compute_75', '-gencode', 'arch=compute_86,code=sm_86', '@INPUT@'/" ../src/meson.build
+    meson setup -Denable_tests=false -Denable_docs=false -Denable_cuda=true \
+        -Dcuda_architectures="75;86;90-virtual" \
+        --buildtype=release --default-library=static --prefix "${PREFIX}" .. && \
     # meson setup -Denable_tests=false -Denable_docs=false --buildtype=release --default-library=shared --prefix "${PREFIX}" ..
     ninja
+    # verify the arch fix: every kernel module must now be a fatbin, not
+    # bare sm_52 PTX. Two fatbin header formats exist: the classic 32-bit
+    # one (magic 0xBA5FB17D, little-endian 7d b1 5f ba) and the 64-bit one
+    # introduced in CUDA 11.3 (0xBA55ED50, little-endian 50 ed 55 ba) —
+    # nvcc 12.x emits the latter. Accept both.
+    for p in $(find . -name '*.ptx'); do
+        magic=$(head -c 4 "$p" | od -An -tx1 | tr -d ' \n')
+        case "$magic" in
+            7db15fba|50ed55ba) ;;
+            *) echo "VMAF CUDA arch fix FAILED (not a fatbin): $p"; exit 1 ;;
+        esac
+    done
+    echo "vmaf cuda arch fix verified: all kernel modules are fatbins (sm_75 ptx + sm_86 sass)"
     ninja install
 }
 
