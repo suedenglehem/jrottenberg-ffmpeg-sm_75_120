@@ -356,6 +356,12 @@ build_whisper() {
     cp ./build/whisper.pc ${PREFIX}/lib/pkgconfig/
 }
 
+build_librist() {
+    meson setup build -Dprefix=${PREFIX} -Dtest=false &&
+    ninja -C build -j$(nproc) &&
+    ninja -C build install
+}
+
 
 
 
@@ -370,6 +376,7 @@ build_ffmpeg() {
     # --enable-libopencore-amrwb
     # --enable-libopenjpeg
     # --enable-libsrt
+    # --enable-librist
     # --enable-libtheora
     # --enable-libvmaf
     # --enable-libwebp
@@ -408,6 +415,7 @@ build_ffmpeg() {
         --enable-libopenjpeg \
         --enable-libopus \
         --enable-libsrt \
+        --enable-librist \
         --enable-libsvtav1 \
         --enable-libtheora \
         --enable-libvidstab \

@@ -58,6 +58,7 @@ OPENCOREAMR = {"version": "0.1.6", "release_date": "2022-08-01"}
 OPENJPEG = {"version": "2.5.2", "release_date": "2024-02-28"}
 OPUS = {"version": "1.5.2", "release_date": "2024-04-12"}
 PTHREAD_STUBS = {"version": "0.5", "release_date": "2023-07-18"}
+RIST = {"version": "0.2.20", "release_date": "2026-07-30"}
 SVTAV1 = {"version": "2.2.1", "release_date": "2024-08-01"}
 THEORA = {"version": "1.2.0", "release_date": "2025-03-29"}
 VORBIS = {"version": "1.3.7", "release_date": "2020-07-04"}
@@ -90,6 +91,23 @@ LIBRARIES = OrderedDict(
                     "download_link": f"https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v{WHISPER['version']}.tar.gz",
                     "build_dir": "/tmp/whisper",
                     "tarball_name": f"whisper-v{WHISPER['version']}.tar.gz",
+                },
+            },
+        ),
+        (
+            "librist",
+            {
+                "link": "https://code.videolan.org/rist/librist",
+                "version": RIST["version"],
+                "version_link": "https://code.videolan.org/rist/librist/-/tags",
+                "release_date": RIST["release_date"],
+                "license_name": "BSD 3-Clause License",
+                "license_link": "https://code.videolan.org/rist/librist/-/blob/master/COPYING",
+                "build_info": {
+                    "download_link": f"https://code.videolan.org/rist/librist/-/archive/v{RIST['version']}/librist-v{RIST['version']}.tar.bz2",
+                    "build_dir": "/tmp/librist",
+                    "tarball_name": f"librist-v{RIST['version']}.tar.bz2",
+                    "sha256sum": "20a5cdce88ccaeab11cd8860c82c565472f21572705d9a476265c5148bf4aeb1 librist-v0.2.20.tar.bz2",
                 },
             },
         ),

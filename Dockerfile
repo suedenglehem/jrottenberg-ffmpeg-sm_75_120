@@ -196,7 +196,7 @@ RUN /tmp/workdir/download_tarballs.sh
 RUN /tmp/workdir/build_source.sh
 
 #       Here we have 3 libs that we have to build from source
-RUN /tmp/workdir/generate-source-of-truth-ffmpeg-versions.py --library-list kvazaar,libvmaf,whisper
+RUN /tmp/workdir/generate-source-of-truth-ffmpeg-versions.py --library-list kvazaar,libvmaf,whisper,librist
 RUN /tmp/workdir/download_tarballs.sh
 RUN /tmp/workdir/build_source.sh
 
